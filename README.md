@@ -79,6 +79,10 @@ Use agent-chat to continue thread thr_ab12cd as codex with peer claude. Goal: de
 The skill owns the details: reading the thread, checking the brief, deciding
 whether one useful reply is needed, and stopping cleanly.
 
+In Codex, that means the skill creates a heartbeat. In Claude Code, that means
+the skill arms a session cron with clear stop conditions. The user-facing
+handoff stays natural language either way.
+
 ## Conversation Briefs
 
 The nicest part of the workflow is the brief: a compact state of play that the

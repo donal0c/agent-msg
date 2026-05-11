@@ -26,6 +26,20 @@ When talking to the other common runtime:
 
 If the peer is ambiguous and the action would send or schedule a message to the wrong agent, ask one concise clarifying question.
 
+## Loop Triggers (Claude Code) — MUST Arm A Cron
+
+Whenever the user or an incoming instruction contains ANY of the following, you MUST arm a recurring loop on the Claude Code side before ending the turn. This is not a judgment call.
+
+- "keep your side running", "keep running", "keep going"
+- "until DONE", "until done", "stop on DONE"
+- "max N turns", "up to N turns", "before exceeding N replies"
+- Any handoff produced by `agent-msg kickoff` or `agent-msg loop-prompt`
+- Any message that tells you to join a thread *and* wait for the peer to reply again
+
+If you are joining a thread and only one reply is needed with no waiting on the peer (e.g. "send Codex this one message"), do not arm a loop. Otherwise, arm one.
+
+See "Claude Code Loop Mechanics" below for exactly how.
+
 ## Intent Router
 
 Map the user's natural language to one of these workflows.
@@ -61,9 +75,9 @@ Behavior:
 1. Use `agent-msg kickoff` with `--from <self>`, `--to <peer>`, and a short topic.
 2. Default to `--max-turns 4` unless the user gives a different budget.
 3. Include the user's goal in the opening message. If the user asks for a recommendation, decision, division of work, or critique, make that deliverable explicit.
-4. Start the recurring loop for the current runtime when possible:
+4. Start the recurring loop for the current runtime:
    - In Codex, create a heartbeat automation attached to this thread using the Codex prompt from `kickoff`.
-   - In Claude Code, start the runtime loop from this skill when the user asks to keep the Claude side running.
+   - In Claude Code, arm a cron via `CronCreate` per "Claude Code Loop Mechanics" below. Do this before confirming to the user.
 5. Give the user only the peer-runtime natural-language instruction if another app needs manual setup. Do not give them a slash-command recipe.
    - Claude Code: `Use agent-chat to join the conversation in thread thr_ab12cd as claude with peer codex. Goal: decide the review strategy. Keep your side running until DONE or before exceeding 4 substantive replies.`
    - Codex: `Use agent-chat to continue thread thr_ab12cd as codex with peer claude. Goal: decide the review strategy. Run this as a Codex heartbeat. Stop on DONE, when the thread is closed, or before exceeding 4 substantive replies.`
@@ -105,7 +119,7 @@ Behavior:
 2. For "stop" or "close", use `agent-msg close <thread>`.
 3. For "done", send a final `DONE:` message with `agent-msg done`.
 4. For summaries, use `agent-msg brief <thread> --json` first. Use `agent-msg show <thread> --json` when the user wants the decision detail or the brief is not enough.
-5. If a scheduler/heartbeat is running for the current runtime, stop it when the thread is done or closed.
+5. If a scheduler/heartbeat is running for the current runtime, stop it when the thread is done or closed. In Claude Code that means calling `CronDelete` for the job armed by this skill — check `CronList` if you do not already have the job id.
 
 ## Conversation Briefs
 
@@ -138,15 +152,70 @@ Behavior:
 
 1. Run `agent-msg doctor` if not already done this turn.
 2. Resolve the thread from the explicit id, peer/topic, or latest active thread.
-3. If the user says "keep running", "until done", "keep going", or the instruction came from a generated handoff, start the current runtime's scheduler/loop yourself when possible.
-4. On each tick, use `agent-msg brief <thread> --as <self> --peer <peer> --json` to understand the state.
-5. Use `agent-msg read <thread> --as <self> --json` for unread messages.
-6. If there are no unread messages, stop the tick quietly.
-7. If the thread is done or closed, stop the scheduler/loop when possible.
-8. If a reply is useful, send exactly one concise substantive reply.
-9. If the conversation is complete, send the final reply with `DONE:`.
+3. Read the current state (`agent-msg brief <thread> --as <self> --peer <peer> --json`, then `agent-msg read` for unread).
+4. Send at most one substantive reply right now if one is useful.
+5. **Arm the loop before ending the turn** if any Loop Trigger phrase matched (see "Loop Triggers" section). In Claude Code that means `CronCreate`; see "Claude Code Loop Mechanics" below. In Codex, create a heartbeat automation.
+6. On each subsequent tick (when the cron fires):
+   - `agent-msg brief <thread> --as <self> --peer <peer> --json`
+   - `agent-msg read <thread> --as <self> --json`
+   - If no unread messages, stop the tick quietly (do not reply).
+   - If the thread is done or closed, call `CronDelete` for this thread's job and stop.
+   - If a reply is useful, send exactly one concise substantive reply.
+   - If the conversation is complete, send the final reply prefixed with `DONE:` and then `CronDelete` the job.
+7. Never let the loop exceed the stated turn budget. Count substantive replies. When the budget is reached, stop replying, `CronDelete` the job, and tell the user.
 
 This is the abstraction layer for runtime loops. The user should be able to say "join the conversation with Codex on X" and trust the skill to start the loop.
+
+## Claude Code Loop Mechanics
+
+The Claude Code loop runs on top of `CronCreate` (session-only by default). Use this exact recipe.
+
+### Step 1 — Load the scheduling tools if deferred
+
+`CronCreate`, `CronDelete`, and `CronList` may be deferred in this session. If they are not already callable, fetch their schemas first:
+
+```
+ToolSearch query="select:CronCreate,CronDelete,CronList"
+```
+
+You only need to do this once per session.
+
+### Step 2 — Get the tick prompt
+
+```
+agent-msg loop-prompt <thread_id> --as <self> --peer <peer> --max-turns <N>
+```
+
+The output is the prompt body. It is NOT a loop — it is what the cron will run on each tick. Capture the full text.
+
+### Step 3 — Arm the cron
+
+Call `CronCreate` with:
+
+- `cron`: `"*/2 * * * *"` for active multi-turn discussions (every 2 minutes). Use `"*/5 * * * *"` for slower-paced threads. Never 0 or 30 on the minute.
+- `prompt`: the text from Step 2, verbatim.
+- `recurring`: `true`
+- `durable`: `false` (session-only; the cron should not outlive the conversation)
+
+Record the returned job id. Mention the thread id in a comment inside the prompt so future `CronList` output makes the link obvious.
+
+### Step 4 — Stop conditions
+
+Call `CronDelete` with the job id when ANY of these happen:
+
+- You send a reply beginning with `DONE:`.
+- A peer message begins with `DONE:` (the thread is finished).
+- The thread status becomes `closed` or `done`.
+- The substantive-reply budget is reached.
+- The user says "stop", "close", or "cancel the loop".
+
+If you are unsure whether a job is still live, call `CronList` and match by thread id in the prompt.
+
+### Notes
+
+- `CronCreate` jobs only fire while the REPL is idle. That is fine — the peer's reply can wait a couple of minutes.
+- Do not use `ScheduleWakeup`. That tool is for `/loop` dynamic-pacing mode, not for this skill.
+- Do not set `durable: true`. These loops are tied to the current session.
 
 ## Reference Resolution
 
@@ -173,10 +242,11 @@ When another runtime needs manual setup, give exactly one natural-language instr
 
 ## Guardrails
 
-- Never create an unbounded loop.
+- Never create an unbounded loop. Always pair `CronCreate` with a clear stop condition and budget.
+- If a Loop Trigger phrase was present, arming the cron is mandatory, not optional. Ending the turn without arming it is a failure of this skill.
 - Send at most one substantive reply per loop tick.
 - Do not reply just to acknowledge.
-- Stop once a message begins with `DONE:` or the thread is closed.
+- Stop once a message begins with `DONE:` or the thread is closed. Stopping means `CronDelete`, not just "don't reply".
 - Ask the user before exceeding the max-turn budget.
 - Keep cross-runtime handoffs as natural-language instructions; route behavior through this skill rather than pasting slash commands or command recipes.
 - Prefer `--json` whenever parsing output.

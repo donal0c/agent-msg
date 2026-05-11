@@ -279,4 +279,9 @@ def test_agent_chat_skill_is_natural_language_first():
     assert "brief" in text
     assert "Joining A Running Thread" in text
     assert 'say "join the conversation with Codex on X"' in text
+    assert "Loop Triggers (Claude Code)" in text
+    assert "CronCreate" in text
+    assert "CronDelete" in text
+    assert "CronList" in text
+    assert "arming the cron is mandatory" in text
     assert "Treat the CLI as plumbing. The user-facing interface is natural language." in text
