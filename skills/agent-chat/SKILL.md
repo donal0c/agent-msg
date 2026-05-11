@@ -63,8 +63,10 @@ Behavior:
 3. Include the user's goal in the opening message. If the user asks for a recommendation, decision, division of work, or critique, make that deliverable explicit.
 4. Start the recurring loop for the current runtime when possible:
    - In Codex, create a heartbeat automation attached to this thread using the Codex prompt from `kickoff`.
-   - In Claude Code, use the generated `/loop` prompt when available.
-5. Give the user only the peer-runtime paste block if another app needs manual setup.
+   - In Claude Code, use the generated short `/loop` prompt when available.
+5. Give the user only the peer-runtime paste block if another app needs manual setup. That block should be short and natural-language based:
+   - Claude Code: `/loop 2m Use agent-chat to continue thread thr_ab12cd as claude with peer codex. Goal: decide the review strategy. Stop on DONE or before exceeding 4 substantive replies.`
+   - Codex: `Use agent-chat to continue thread thr_ab12cd as codex with peer claude. Goal: decide the review strategy. Run this as a Codex heartbeat. Stop on DONE, when the thread is closed, or before exceeding 4 substantive replies.`
 6. Confirm in human language: topic, peer, thread id, turn budget, and stop condition.
 
 Do not create unbounded autonomous chats.
@@ -123,6 +125,26 @@ When answering from a brief, sound like a person:
 
 Do not paste the raw brief unless the user asks for debugging details.
 
+## Joining A Running Thread
+
+Use when the user or a scheduler says things like:
+
+- "Use agent-chat to continue thread thr_ab12cd as claude with peer codex"
+- "join thread thr_ab12cd"
+- "keep the Claude side of thr_ab12cd running"
+
+Behavior:
+
+1. Run `agent-msg doctor` if not already done this turn.
+2. Use `agent-msg brief <thread> --as <self> --peer <peer> --json` to understand the state.
+3. Use `agent-msg read <thread> --as <self> --json` for unread messages.
+4. If there are no unread messages, stop the tick quietly.
+5. If the thread is done or closed, stop the scheduler/loop when possible.
+6. If a reply is useful, send exactly one concise substantive reply.
+7. If the conversation is complete, send the final reply with `DONE:`.
+
+This is the abstraction layer for runtime loops. The user should not need to paste a detailed command recipe.
+
 ## Reference Resolution
 
 The user will often say "that", "it", "the Codex chat", or "the previous conversation".
@@ -153,6 +175,7 @@ When another runtime needs manual setup, give exactly one paste-ready block for 
 - Do not reply just to acknowledge.
 - Stop once a message begins with `DONE:` or the thread is closed.
 - Ask the user before exceeding the max-turn budget.
+- Keep scheduler paste blocks short; route behavior through this skill rather than pasting full command recipes.
 - Prefer `--json` whenever parsing output.
 - Use `agent-msg brief --json` before answering state-of-play questions.
 - Use `agent-msg show --json` for summaries and reference recovery.

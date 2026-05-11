@@ -971,21 +971,17 @@ Guardrails:
 
 
 def codex_heartbeat_prompt(thread_id: str, agent: str, peer: str, goal: str, max_turns: int) -> str:
-    return f"""\
-Set up a Codex heartbeat for this thread.
-
-Every 2 minutes, continue this same conversation and run the agent-msg loop tick below. Stop the heartbeat when a message begins with `DONE:`, when the thread is closed, or after {max_turns} substantive reply turns.
-
-{loop_prompt_text(thread_id, agent, peer, goal, max_turns)}
-"""
+    return (
+        f"Use agent-chat to continue thread {thread_id} as {agent} with peer {peer}. "
+        f"Goal: {goal}. Run this as a Codex heartbeat. Stop on DONE, when the thread "
+        f"is closed, or before exceeding {max_turns} substantive replies."
+    )
 
 
 def claude_loop_prompt(thread_id: str, agent: str, peer: str, goal: str, max_turns: int) -> str:
     one_line = (
-        f"Check agent-msg thread {thread_id} as {agent}; peer is {peer}; goal: {goal}. "
-        "Read unread messages with --json, send at most one useful reply, do not acknowledge only, "
-        "stop when a message begins with DONE:, and ask the user before exceeding "
-        f"{max_turns} substantive reply turns."
+        f"Use agent-chat to continue thread {thread_id} as {agent} with peer {peer}. "
+        f"Goal: {goal}. Stop on DONE or before exceeding {max_turns} substantive replies."
     )
     return f"/loop 2m {one_line}"
 

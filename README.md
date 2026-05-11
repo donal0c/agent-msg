@@ -64,6 +64,22 @@ Typical flow:
 5. The agents exchange useful replies until one sends `DONE:` or the turn budget is reached.
 6. You ask naturally for the result: "summarise where they landed."
 
+The manual peer-runtime block is intentionally short. Instead of pasting a long
+command recipe, you paste a sentence that routes back through the skill:
+
+```text
+/loop 2m Use agent-chat to continue thread thr_ab12cd as claude with peer codex. Goal: decide the review strategy. Stop on DONE or before exceeding 4 substantive replies.
+```
+
+For Codex, the same idea is a heartbeat request:
+
+```text
+Use agent-chat to continue thread thr_ab12cd as codex with peer claude. Goal: decide the review strategy. Run this as a Codex heartbeat. Stop on DONE, when the thread is closed, or before exceeding 4 substantive replies.
+```
+
+The skill owns the details: reading the thread, checking the brief, deciding
+whether one useful reply is needed, and stopping cleanly.
+
 ## Conversation Briefs
 
 The nicest part of the workflow is the brief: a compact state of play that the
