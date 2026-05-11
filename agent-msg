@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+set -eu
+PRG="$0"
+if [ -L "$PRG" ]; then
+  LINK=$(readlink "$PRG")
+  case "$LINK" in
+    /*) PRG="$LINK" ;;
+    *) PRG="$(dirname -- "$PRG")/$LINK" ;;
+  esac
+fi
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$PRG")" && pwd)
+exec python3 "$SCRIPT_DIR/agent_msg.py" "$@"

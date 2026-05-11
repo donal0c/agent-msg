@@ -1,0 +1,12 @@
+[project]
+name = "agent-msg"
+version = "0.1.0"
+description = "Tiny local SQLite mailbox for Claude Code, Codex, and other agent sessions."
+requires-python = ">=3.11"
+readme = "README.md"
+
+[project.scripts]
+agent-msg = "agent_msg:main"
+
+[tool.pytest.ini_options]
+testpaths = ["test_agent_msg.py"]
