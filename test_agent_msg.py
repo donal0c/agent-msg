@@ -185,10 +185,92 @@ def test_show_returns_metadata_and_transcript_for_summaries(tmp_path):
     assert [message["body"] for message in payload["messages"]] == ["First", "Second"]
 
 
+def test_brief_resolves_latest_and_reports_waiting_state(tmp_path):
+    result = run_cmd(
+        tmp_path,
+        "--json",
+        "kickoff",
+        "dispatcher design",
+        "--from",
+        "claude",
+        "--to",
+        "codex",
+        "--max-turns",
+        "4",
+        "Please recommend the dispatcher shape.",
+    )
+    thread_id = json.loads(result.stdout)["thread_id"]
+
+    brief = run_cmd(tmp_path, "--json", "brief", "--as", "codex", "--peer", "claude")
+    payload = json.loads(brief.stdout)
+
+    assert payload["thread"]["id"] == thread_id
+    assert payload["brief"]["state"] == "waiting on codex"
+    assert payload["brief"]["waiting_on"] == ["codex"]
+    assert payload["brief"]["budget"]["label"] == "0 of 4 turns used"
+    assert "Please recommend the dispatcher shape." in payload["brief"]["latest_point"]
+
+
+def test_brief_tracks_turn_budget_after_reply(tmp_path):
+    result = run_cmd(
+        tmp_path,
+        "--json",
+        "kickoff",
+        "review plan",
+        "--from",
+        "codex",
+        "--to",
+        "claude",
+        "--max-turns",
+        "2",
+        "Please critique the review plan.",
+    )
+    thread_id = json.loads(result.stdout)["thread_id"]
+    run_cmd(tmp_path, "send", thread_id, "--as", "claude", "Focus on skill UX first.")
+
+    brief = run_cmd(tmp_path, "--json", "brief", thread_id, "--as", "codex", "--peer", "claude")
+    payload = json.loads(brief.stdout)
+
+    assert payload["brief"]["state"] == "waiting on codex"
+    assert payload["brief"]["budget"] == {
+        "used": 1,
+        "max": 2,
+        "remaining": 1,
+        "label": "1 of 2 turns used",
+    }
+    assert payload["brief"]["latest"]["sender"] == "claude"
+    assert payload["brief"]["next"] == "Read the latest message and decide whether one useful reply is needed."
+
+
+def test_brief_can_resolve_done_thread_when_closed_included(tmp_path):
+    result = run_cmd(
+        tmp_path,
+        "--json",
+        "kickoff",
+        "final call",
+        "--from",
+        "codex",
+        "--to",
+        "claude",
+        "Choose the final path.",
+    )
+    thread_id = json.loads(result.stdout)["thread_id"]
+    run_cmd(tmp_path, "done", thread_id, "--as", "claude", "Use the simple brief.")
+
+    brief = run_cmd(tmp_path, "--json", "brief", "--as", "codex", "--peer", "claude", "--closed")
+    payload = json.loads(brief.stdout)
+
+    assert payload["thread"]["id"] == thread_id
+    assert payload["brief"]["state"] == "done"
+    assert payload["brief"]["waiting_on"] == []
+    assert payload["brief"]["latest_point"] == "DONE: Use the simple brief."
+
+
 def test_agent_chat_skill_is_natural_language_first():
     text = SKILL.read_text()
 
     assert "The user should not need to know, type, or remember `agent-msg` commands" in text
     assert "Intent Router" in text
     assert "Reference Resolution" in text
+    assert "brief" in text
     assert "Treat the CLI as plumbing. The user-facing interface is natural language." in text

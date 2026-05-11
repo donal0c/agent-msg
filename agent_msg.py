@@ -719,6 +719,121 @@ def cmd_show(args: argparse.Namespace) -> None:
     print("\n".join(lines))
 
 
+def compact_body(body: str, limit: int = 240) -> str:
+    compact = " ".join(body.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 1].rstrip()}..."
+
+
+def brief_for_thread(
+    summary: dict[str, Any],
+    messages: list[Message],
+    agent: str,
+    peer: str | None = None,
+) -> dict[str, Any]:
+    participants = [participant["agent"] for participant in summary["participants"]]
+    named_peer = peer or next((participant for participant in participants if participant != agent), None)
+    latest = messages[-1] if messages else None
+    turns_used = max(0, len(messages) - 1)
+    max_turns = summary["max_turns"]
+    remaining = max(0, max_turns - turns_used) if max_turns is not None else None
+
+    if summary["status"] == "done":
+        waiting_on: list[str] = []
+        state = "done"
+        next_action = "Summarise the final recommendation or reopen the thread if more work is needed."
+    elif summary["status"] == "closed":
+        waiting_on = []
+        state = "closed"
+        next_action = "No reply is needed unless the user asks to reopen the thread."
+    elif latest is None:
+        waiting_on = [summary["created_by"] or agent]
+        state = f"waiting on {waiting_on[0]}"
+        next_action = "Send the opening message or close the empty thread."
+    elif latest.sender == agent:
+        waiting_on = [participant for participant in participants if participant != agent]
+        state = f"waiting on {', '.join(waiting_on)}" if waiting_on else "waiting on peer"
+        next_action = "Wait for the peer to reply, or ask the user before nudging."
+    else:
+        waiting_on = [agent]
+        state = f"waiting on {agent}"
+        next_action = "Read the latest message and decide whether one useful reply is needed."
+
+    budget_label = "no turn budget"
+    if max_turns is not None:
+        budget_label = f"{turns_used} of {max_turns} turns used"
+        if remaining == 0 and summary["status"] == "open":
+            next_action = "The turn budget is exhausted; ask the user before continuing."
+
+    latest_payload = None
+    latest_point = "No messages yet."
+    if latest is not None:
+        latest_payload = asdict(latest)
+        latest_point = compact_body(latest.body)
+
+    title_parts = [summary["topic"]]
+    if named_peer:
+        title_parts.append(f"with {named_peer}")
+    title = " ".join(part for part in title_parts if part)
+
+    lines = [
+        f"Thread: {title}",
+        f"Status: {state}",
+        f"Budget: {budget_label}",
+        f"Latest: {latest_point}",
+        f"Next: {next_action}",
+    ]
+
+    return {
+        "title": title,
+        "status": summary["status"],
+        "state": state,
+        "waiting_on": waiting_on,
+        "budget": {
+            "used": turns_used,
+            "max": max_turns,
+            "remaining": remaining,
+            "label": budget_label,
+        },
+        "latest": latest_payload,
+        "latest_point": latest_point,
+        "next": next_action,
+        "text": "\n".join(lines),
+    }
+
+
+def cmd_brief(args: argparse.Namespace) -> None:
+    agent = args.as_agent or default_agent()
+    with connect(args.db) as conn:
+        thread_id = args.thread_id
+        if thread_id is None:
+            threads = find_threads(
+                conn,
+                agent=agent,
+                peer=args.peer,
+                include_closed=args.closed,
+                only_unread=False,
+                limit=1,
+            )
+            thread_id = threads[0]["id"] if threads else None
+        if thread_id is None:
+            data = {"agent": agent, "peer": args.peer, "thread": None, "brief": None}
+            print_result(args, data, "No matching threads.")
+            return
+        summary = thread_summary(conn, thread_id, agent)
+        messages = rows_to_messages(thread_message_rows(conn, thread_id))
+
+    brief = brief_for_thread(summary, messages, agent, args.peer)
+    data = {
+        "agent": agent,
+        "peer": args.peer,
+        "thread": summary,
+        "brief": brief,
+    }
+    print_result(args, data, brief["text"])
+
+
 def cmd_doctor(args: argparse.Namespace) -> None:
     with connect(args.db) as conn:
         thread_count = conn.execute("SELECT COUNT(*) AS n FROM threads").fetchone()["n"]
@@ -777,6 +892,7 @@ Recommended agent workflow:
 
 4. Read replies:
    agent-msg read thr_abc123
+   agent-msg brief thr_abc123 --as claude --json
    agent-msg show thr_abc123 --json
 
 5. Wait for the next reply when running inside a loop:
@@ -787,6 +903,7 @@ Recommended agent workflow:
 
 7. List active threads and unread counts:
    agent-msg inbox --as claude
+   agent-msg brief --as claude --peer codex --json
 
 Rules for agents:
 - Prefer --as if AGENT_MSG_AGENT is not set.
@@ -1040,6 +1157,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("thread_id", help="Thread id, e.g. thr_ab12cd.")
     p_show.add_argument("--as", dest="as_agent", help="Agent identity for unread counts.")
     p_show.set_defaults(func=cmd_show)
+
+    p_brief = sub.add_parser("brief", help="Show a compact state-of-play for a thread.")
+    add_common_flags(p_brief)
+    p_brief.add_argument("thread_id", nargs="?", help="Thread id. Defaults to latest matching thread.")
+    p_brief.add_argument("--as", dest="as_agent", help="Agent identity for waiting-on status.")
+    p_brief.add_argument("--peer", help="Resolve or label the brief with this peer agent.")
+    p_brief.add_argument("--closed", action="store_true", help="Include closed and done threads when resolving.")
+    p_brief.set_defaults(func=cmd_brief)
 
     p_doctor = sub.add_parser("doctor", help="Check database health and location.")
     add_common_flags(p_doctor)

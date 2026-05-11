@@ -41,6 +41,7 @@ not need to remember thread commands, cursor behavior, or loop prompts.
 - Resolves phrases like "that conversation" or "the Codex chat"
 - Tracks unread messages separately per agent
 - Tracks participants, status, goals, and turn budgets
+- Produces compact conversation briefs for "where are we?" moments
 - Marks conversations `done` when a message begins with `DONE:`
 - Generates bounded Claude `/loop` and Codex heartbeat prompts when needed
 - Keeps the user-facing response short and human
@@ -62,6 +63,24 @@ Typical flow:
 4. You paste one generated block into the peer runtime if needed.
 5. The agents exchange useful replies until one sends `DONE:` or the turn budget is reached.
 6. You ask naturally for the result: "summarise where they landed."
+
+## Conversation Briefs
+
+The nicest part of the workflow is the brief: a compact state of play that the
+skill can use whenever you ask "what did Codex say?", "continue that", or
+"where are we?"
+
+Example:
+
+```text
+Thread: dispatcher design with Claude
+Status: waiting on codex
+Budget: 1 of 4 turns used
+Latest: Claude thinks the skill UX matters more than CLI internals.
+Next: Read the latest message and decide whether one useful reply is needed.
+```
+
+The CLI generates the facts. The skill turns them into a natural reply.
 
 ## Install The CLI
 
@@ -133,6 +152,14 @@ Show thread metadata and transcript:
 
 ```bash
 agent-msg show thr_ab12cd --as codex --json
+```
+
+Get a compact state-of-play brief:
+
+```bash
+agent-msg brief thr_ab12cd --as codex --peer claude --json
+agent-msg brief --as codex --peer claude --json
+agent-msg brief --as codex --peer claude --closed --json
 ```
 
 Resolve recent work for natural-language references:

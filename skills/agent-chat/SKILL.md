@@ -81,10 +81,11 @@ Use when the user says things like:
 Behavior:
 
 1. Resolve the target thread with an explicit thread id or `agent-msg latest --as <self> --peer <peer> --json`.
-2. Use `agent-msg read <thread> --as <self> --json` for unread messages.
-3. Use `agent-msg show <thread> --as <self> --json` only when unread messages lack enough context.
-4. If the user asked to continue, send one substantive reply or start/continue the bounded loop as appropriate.
-5. If there are no new messages, say that plainly and keep it short.
+2. Use `agent-msg brief <thread> --as <self> --peer <peer> --json` first to get the state of play.
+3. Use `agent-msg read <thread> --as <self> --json` for unread messages.
+4. Use `agent-msg show <thread> --as <self> --json` only when unread messages or the brief lack enough context.
+5. If the user asked to continue, send one substantive reply or start/continue the bounded loop as appropriate.
+6. If there are no new messages, answer from the brief and keep it short.
 
 ### Stop, Done, Or Summarise
 
@@ -98,11 +99,29 @@ Use when the user says things like:
 
 Behavior:
 
-1. Resolve the thread.
+1. Resolve the thread. For "summarise", "where landed", or "final recommendation", include closed/done threads in resolution.
 2. For "stop" or "close", use `agent-msg close <thread>`.
 3. For "done", send a final `DONE:` message with `agent-msg done`.
-4. For summaries, use `agent-msg show <thread> --json`, then give the user a concise synthesis with the actual thread id.
+4. For summaries, use `agent-msg brief <thread> --json` first. Use `agent-msg show <thread> --json` when the user wants the decision detail or the brief is not enough.
 5. If a scheduler/heartbeat is running for the current runtime, stop it when the thread is done or closed.
+
+## Conversation Briefs
+
+Use `agent-msg brief` whenever the user asks a state-of-play question:
+
+- "what did Codex say?"
+- "where are we?"
+- "what is this waiting on?"
+- "continue that"
+- "summarise where they landed"
+
+The brief gives thread topic, status, turn budget, latest useful point, who is waiting on whom, and the next likely action. Treat it as the first read model for natural-language continuity.
+
+When answering from a brief, sound like a person:
+
+> Claude replied on `thr_ab12cd`. It is waiting on us. Budget is 1 of 4 turns used. The latest point is that the skill UX matters more than CLI internals.
+
+Do not paste the raw brief unless the user asks for debugging details.
 
 ## Reference Resolution
 
@@ -115,7 +134,7 @@ Resolution order:
 3. Latest active thread for the current agent.
 4. Ask a short clarifying question if multiple active threads are plausible.
 
-Use `agent-msg inbox --as <self> --json` or `agent-msg latest --as <self> --peer <peer> --json` to resolve these references. Do not ask the user for a thread id unless the local state is genuinely ambiguous.
+Use `agent-msg inbox --as <self> --json` or `agent-msg latest --as <self> --peer <peer> --json` to resolve these references. Add `--closed` when the user is asking about a completed or stopped conversation. Do not ask the user for a thread id unless the local state is genuinely ambiguous.
 
 ## Human-Facing Output
 
@@ -135,5 +154,6 @@ When another runtime needs manual setup, give exactly one paste-ready block for 
 - Stop once a message begins with `DONE:` or the thread is closed.
 - Ask the user before exceeding the max-turn budget.
 - Prefer `--json` whenever parsing output.
+- Use `agent-msg brief --json` before answering state-of-play questions.
 - Use `agent-msg show --json` for summaries and reference recovery.
 - Treat the CLI as plumbing. The user-facing interface is natural language.
