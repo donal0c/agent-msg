@@ -124,9 +124,9 @@ def test_kickoff_creates_thread_sends_message_and_prints_prompts(tmp_path):
     assert payload["from"] == "claude"
     assert payload["to"] == "codex"
     assert "heartbeat" in payload["prompts"]["codex"]
-    assert "/loop 2m" in payload["prompts"]["claude"]
-    assert "Use agent-chat to continue thread" in payload["prompts"]["claude"]
+    assert "Use agent-chat to join the conversation" in payload["prompts"]["claude"]
     assert "Use agent-chat to continue thread" in payload["prompts"]["codex"]
+    assert "/loop" not in payload["prompts"]["claude"]
     assert "Read unread messages with --json" not in payload["prompts"]["claude"]
     assert "Run: `agent-msg read" not in payload["prompts"]["codex"]
 
@@ -278,5 +278,5 @@ def test_agent_chat_skill_is_natural_language_first():
     assert "Reference Resolution" in text
     assert "brief" in text
     assert "Joining A Running Thread" in text
-    assert "The user should not need to paste a detailed command recipe." in text
+    assert 'say "join the conversation with Codex on X"' in text
     assert "Treat the CLI as plumbing. The user-facing interface is natural language." in text

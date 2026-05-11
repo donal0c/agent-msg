@@ -979,11 +979,11 @@ def codex_heartbeat_prompt(thread_id: str, agent: str, peer: str, goal: str, max
 
 
 def claude_loop_prompt(thread_id: str, agent: str, peer: str, goal: str, max_turns: int) -> str:
-    one_line = (
-        f"Use agent-chat to continue thread {thread_id} as {agent} with peer {peer}. "
-        f"Goal: {goal}. Stop on DONE or before exceeding {max_turns} substantive replies."
+    return (
+        f"Use agent-chat to join the conversation in thread {thread_id} as {agent} "
+        f"with peer {peer}. Goal: {goal}. Keep your side running until DONE or before "
+        f"exceeding {max_turns} substantive replies."
     )
-    return f"/loop 2m {one_line}"
 
 
 def runtime_loop_prompt(thread_id: str, agent: str, peer: str, goal: str, max_turns: int) -> str:

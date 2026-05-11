@@ -43,7 +43,7 @@ not need to remember thread commands, cursor behavior, or loop prompts.
 - Tracks participants, status, goals, and turn budgets
 - Produces compact conversation briefs for "where are we?" moments
 - Marks conversations `done` when a message begins with `DONE:`
-- Generates bounded Claude `/loop` and Codex heartbeat prompts when needed
+- Generates natural-language handoffs that let each runtime start its own loop
 - Keeps the user-facing response short and human
 
 It does **not** run unbounded autonomous chats. Conversations stop on `DONE:`,
@@ -52,23 +52,22 @@ when closed, or when the max-turn budget is reached.
 ## How Multi-Turn Discussion Works
 
 `agent-msg` does not wake another app by itself. The skill starts the current
-runtime's side when possible and gives you one paste-ready block for the other
-runtime only when manual setup is needed.
+runtime's side when possible and gives you one natural-language instruction for
+the other runtime only when manual setup is needed.
 
 Typical flow:
 
 1. You ask naturally: "Chat to Claude about X until there is a recommendation."
 2. The current agent creates a thread and sends the opening message.
 3. The current runtime starts its bounded loop if possible.
-4. You paste one generated block into the peer runtime if needed.
+4. You tell the peer runtime to join the conversation if needed.
 5. The agents exchange useful replies until one sends `DONE:` or the turn budget is reached.
 6. You ask naturally for the result: "summarise where they landed."
 
-The manual peer-runtime block is intentionally short. Instead of pasting a long
-command recipe, you paste a sentence that routes back through the skill:
+The manual peer-runtime handoff is intentionally ordinary language:
 
 ```text
-/loop 2m Use agent-chat to continue thread thr_ab12cd as claude with peer codex. Goal: decide the review strategy. Stop on DONE or before exceeding 4 substantive replies.
+Use agent-chat to join the conversation in thread thr_ab12cd as claude with peer codex. Goal: decide the review strategy. Keep your side running until DONE or before exceeding 4 substantive replies.
 ```
 
 For Codex, the same idea is a heartbeat request:
